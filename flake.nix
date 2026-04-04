@@ -2,7 +2,7 @@
   description = "Tatara infrastructure definitions for pleme-io";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     tatara.url = "github:pleme-io/tatara";
     devenv = {
       url = "github:cachix/devenv";
