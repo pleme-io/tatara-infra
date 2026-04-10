@@ -130,13 +130,15 @@
           chmod 1777 tmp
           chmod 700 root/.ssh
         '';
-        config = {
-          Cmd = [ "${pkgs.openssh}/bin/sshd" "-D" "-e" ];
+        config = let
+          path = pkgs.lib.makeBinPath [ pkgs.nix pkgs.openssh pkgs.attic-client pkgs.bashInteractive pkgs.coreutils pkgs.git pkgs.gnutar pkgs.gzip pkgs.xz ];
+        in {
+          Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" "-c" "exec sshd -D -e" ];
           ExposedPorts = { "22/tcp" = {}; };
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             "NIX_SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-            "PATH=${pkgs.lib.makeBinPath [ pkgs.nix pkgs.openssh pkgs.attic-client pkgs.bashInteractive pkgs.coreutils pkgs.git pkgs.gnutar pkgs.gzip pkgs.xz ]}"
+            "PATH=${path}"
           ];
         };
       };
