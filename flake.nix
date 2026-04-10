@@ -175,50 +175,8 @@
       };
 
       # sui (粋) — unified Nix build + cache platform.
-      # Build with glibc (not musl) to avoid LLVM cross-compilation.
-      # The buildLayeredImage includes glibc in the closure automatically.
-      sui-image = let
-        suiBin = pkgs.rustPlatform.buildRustPackage {
-          pname = "sui";
-          version = "0.1.0";
-          src = sui;
-          cargoLock = {
-            lockFile = "${sui}/Cargo.lock";
-            outputHashes = {
-              "gix-0.81.0" = "sha256-jVs+ZlLlOsIRjIv0KBQS6JK5J7VMit6LRh8OSAFhTZw=";
-            };
-          };
-          cargoBuildFlags = [ "--package" "sui" ];
-          nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl sqlite ];
-          doCheck = false;
-        };
-      in pkgs.dockerTools.buildLayeredImage {
-        name = "ghcr.io/pleme-io/sui";
-        tag = "${archTag.${system}}-latest";
-        contents = with pkgs; [
-          suiBin
-          cacert
-          nix
-        ];
-        extraCommands = ''
-          mkdir -p etc tmp var/lib/sui
-          echo "root:x:0:0:root:/root:/bin/sh" > etc/passwd
-          echo "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin" >> etc/passwd
-          echo "root:x:0:" > etc/group
-          echo "nogroup:x:65534:" >> etc/group
-          chmod 1777 tmp
-        '';
-        config = {
-          Entrypoint = [ "${suiBin}/bin/sui" ];
-          ExposedPorts = { "5000/tcp" = {}; };
-          Env = [
-            "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-            "RUST_LOG=info"
-          ];
-          User = "65534:65534";
-        };
-      };
+      # Uses sui's own substrate-built Docker image output (crate2nix, per-crate caching).
+      sui-image = sui.packages.${system}.dockerImage-amd64;
     });
   };
 }
