@@ -175,9 +175,24 @@
       };
 
       # sui (粋) — unified Nix build + cache platform.
-      # Single static binary replaces both Attic and nix-builder.
+      # Build with glibc (not musl) to avoid LLVM cross-compilation.
+      # The buildLayeredImage includes glibc in the closure automatically.
       sui-image = let
-        suiBin = sui.packages.${system}.sui or sui.packages.${system}.default;
+        suiBin = pkgs.rustPlatform.buildRustPackage {
+          pname = "sui";
+          version = "0.1.0";
+          src = sui;
+          cargoLock = {
+            lockFile = "${sui}/Cargo.lock";
+            outputHashes = {
+              "gix-0.81.0" = "sha256-jVs+ZlLlOsIRjIv0KBQS6JK5J7VMit6LRh8OSAFhTZw=";
+            };
+          };
+          cargoBuildFlags = [ "--package" "sui" ];
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; [ openssl sqlite ];
+          doCheck = false;
+        };
       in pkgs.dockerTools.buildLayeredImage {
         name = "ghcr.io/pleme-io/sui";
         tag = "${archTag.${system}}-latest";
