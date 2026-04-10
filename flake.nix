@@ -62,7 +62,13 @@
         pname = "tatara-operator";
         version = "0.1.0";
         src = tatara;
-        cargoLock.lockFile = "${tatara}/Cargo.lock";
+        cargoLock = {
+          lockFile = "${tatara}/Cargo.lock";
+          outputHashes = {
+            "kasou-0.1.0" = "sha256-7n0xnbmmunzMsfl+m9/P8mmHbC4tKz1QpK3yLP+sZDA=";
+            "shikumi-0.1.0" = "sha256-6oIj/AIuFKV5MlAkZcrk2Qy5dtQ0zV8qk9I+5uqZkPA=";
+          };
+        };
         cargoBuildFlags = [ "--package" "tatara-operator" ];
         nativeBuildInputs = with pkgs; [ pkg-config ];
         buildInputs = with pkgs; [ openssl ];
@@ -93,6 +99,44 @@
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             "RUST_LOG=info"
+          ];
+        };
+      };
+
+      # Nix builder image — privileged container with nix-daemon, SSH, attic-client.
+      # Used by pleme-nix-builder chart for executing builds.
+      nix-builder-image = pkgs.dockerTools.buildLayeredImage {
+        name = "ghcr.io/pleme-io/nix-builder";
+        tag = "${archTag.${system}}-latest";
+        contents = with pkgs; [
+          nix
+          openssh
+          attic-client
+          bashInteractive
+          coreutils
+          cacert
+          git
+          gnutar
+          gzip
+          xz
+        ];
+        extraCommands = ''
+          mkdir -p etc tmp root/.ssh var/log nix/var/nix
+          echo "root:x:0:0:root:/root:/bin/bash" > etc/passwd
+          echo "nixbld:x:30000:30000:Nix build user:/var/empty:/usr/sbin/nologin" >> etc/passwd
+          echo "sshd:x:74:74:sshd:/var/empty:/usr/sbin/nologin" >> etc/passwd
+          echo "root:x:0:" > etc/group
+          echo "nixbld:x:30000:" >> etc/group
+          chmod 1777 tmp
+          chmod 700 root/.ssh
+        '';
+        config = {
+          Cmd = [ "${pkgs.openssh}/bin/sshd" "-D" "-e" ];
+          ExposedPorts = { "22/tcp" = {}; };
+          Env = [
+            "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            "NIX_SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            "PATH=${pkgs.lib.makeBinPath [ pkgs.nix pkgs.openssh pkgs.attic-client pkgs.bashInteractive pkgs.coreutils pkgs.git pkgs.gnutar pkgs.gzip pkgs.xz ]}"
           ];
         };
       };
