@@ -4,13 +4,14 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     tatara.url = "github:pleme-io/tatara";
+    sui.url = "github:pleme-io/sui";
     devenv = {
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, tatara, ... }:
+  outputs = { self, nixpkgs, tatara, sui, ... }:
   let
     systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
     linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
@@ -121,19 +122,23 @@
           xz
         ];
         extraCommands = ''
-          mkdir -p etc tmp root/.ssh var/log nix/var/nix
-          echo "root:x:0:0:root:/root:/bin/bash" > etc/passwd
+          mkdir -p etc tmp root/.ssh var/log nix/var/nix bin usr/bin
+          echo "root:x:0:0:root:/root:/bin/sh" > etc/passwd
           echo "nixbld:x:30000:30000:Nix build user:/var/empty:/usr/sbin/nologin" >> etc/passwd
           echo "sshd:x:74:74:sshd:/var/empty:/usr/sbin/nologin" >> etc/passwd
           echo "root:x:0:" > etc/group
           echo "nixbld:x:30000:" >> etc/group
+          # Create /bin/sh symlink so entrypoint works
+          ln -sf ${pkgs.bashInteractive}/bin/bash bin/sh
+          ln -sf ${pkgs.bashInteractive}/bin/bash bin/bash
+          ln -sf ${pkgs.coreutils}/bin/env usr/bin/env
           chmod 1777 tmp
           chmod 700 root/.ssh
         '';
         config = let
           path = pkgs.lib.makeBinPath [ pkgs.nix pkgs.openssh pkgs.attic-client pkgs.bashInteractive pkgs.coreutils pkgs.git pkgs.gnutar pkgs.gzip pkgs.xz ];
         in {
-          Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" "-c" "exec sshd -D -e" ];
+          Entrypoint = [ "/bin/sh" "-c" "exec sshd -D -e" ];
           ExposedPorts = { "22/tcp" = {}; };
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
@@ -161,6 +166,37 @@
         config = {
           Entrypoint = [ "${tatara-operator-bin}/bin/tatara-operator" ];
           ExposedPorts = { "8080/tcp" = {}; };
+          Env = [
+            "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            "RUST_LOG=info"
+          ];
+          User = "65534:65534";
+        };
+      };
+
+      # sui (粋) — unified Nix build + cache platform.
+      # Single static binary replaces both Attic and nix-builder.
+      sui-image = let
+        suiBin = sui.packages.${system}.sui or sui.packages.${system}.default;
+      in pkgs.dockerTools.buildLayeredImage {
+        name = "ghcr.io/pleme-io/sui";
+        tag = "${archTag.${system}}-latest";
+        contents = with pkgs; [
+          suiBin
+          cacert
+          nix
+        ];
+        extraCommands = ''
+          mkdir -p etc tmp var/lib/sui
+          echo "root:x:0:0:root:/root:/bin/sh" > etc/passwd
+          echo "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin" >> etc/passwd
+          echo "root:x:0:" > etc/group
+          echo "nogroup:x:65534:" >> etc/group
+          chmod 1777 tmp
+        '';
+        config = {
+          Entrypoint = [ "${suiBin}/bin/sui" ];
+          ExposedPorts = { "5000/tcp" = {}; };
           Env = [
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             "RUST_LOG=info"
